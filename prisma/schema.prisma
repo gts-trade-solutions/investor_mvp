@@ -1,0 +1,572 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model User {
+  id           String @id @default(cuid())
+  name         String?
+  email        String @unique
+  image        String?
+  passwordHash String?
+  role         Role   @default(FOUNDER)
+  createdAt    DateTime @default(now())
+
+  // Relations
+  orgMembers       OrgMember[]
+  investors        Investor[]
+  activities       Activity[]
+  introsSent       Intro[] @relation("IntroSender")
+  introsReceived   Intro[] @relation("IntroReceiver")  
+  savedLists       SavedList[]
+  notifications    Notification[]
+  fileObjects      FileObject[]
+  emailTokens      EmailVerificationToken[]
+  resetTokens      PasswordResetToken[]
+  reviews          Review[]
+  dataRoomPerms    DataRoomPermission[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Org {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  // Relations
+  members        OrgMember[]
+  startups       Startup[]
+  funds          Fund[]
+  investors      Investor[]
+  opportunities  Opportunity[]
+  activities     Activity[]
+  submissions    Submission[]
+  programs       Program[]
+  applications   Application[]
+  perks          Perk[]
+  savedLists     SavedList[]
+  fileObjects    FileObject[]
+  dataRoomPerms  DataRoomPermission[]
+  intros         Intro[]
+
+  @@index([slug])
+  @@map("orgs")
+}
+
+model OrgMember {
+  id        String     @id @default(cuid())
+  orgId     String
+  userId    String
+  role      OrgRole    @default(VIEWER)
+  createdAt DateTime   @default(now())
+
+  // Relations
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("org_members")
+}
+
+model Startup {
+  id         String   @id @default(cuid())
+  orgId      String
+  name       String
+  sector     Json     // Array of sectors
+  stage      Stage
+  geo        String
+  website    String?
+  mrr        Int?     // In cents
+  teamSize   Int?
+  isVisible  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  // Relations
+  org           Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+  submissions   Submission[]
+  deckLinks     DeckLink[]
+  applications  Application[]
+  updates       Update[]
+  intros        Intro[]
+
+  @@index([orgId])
+  @@index([sector])
+  @@index([stage])
+  @@index([geo])
+  @@index([mrr])
+  @@index([isVisible])
+  @@map("startups")
+}
+
+model Fund {
+  id           String   @id @default(cuid())
+  orgId        String
+  name         String
+  checkSizeMin Int      // In cents
+  checkSizeMax Int      // In cents
+  sector       Json     // Array of sectors
+  stage        Json     // Array of stages
+  geo          Json     // Array of geos
+  website      String?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  org           Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  investors     Investor[]
+  opportunities Opportunity[]
+  submissions   Submission[]
+
+  @@index([orgId])
+  @@index([sector])
+  @@index([stage])
+  @@index([geo])
+  @@map("funds")
+}
+
+model Investor {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  fundId    String?
+  name      String
+  title     String?
+  sectors   Json     // Array of sectors
+  stages    Json     // Array of stages
+  geos      Json     // Array of geos
+  notes     String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  org           Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fund          Fund?         @relation(fields: [fundId], references: [id], onDelete: SetNull)
+  opportunities Opportunity[]
+  submissions   Submission[]
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([fundId])
+  @@index([sectors])
+  @@index([stages])
+  @@index([geos])
+  @@map("investors")
+}
+
+model Opportunity {
+  id         String            @id @default(cuid())
+  orgId      String
+  startupId  String
+  investorId String?
+  fundId     String?
+  stage      OpportunityStage  @default(TO_CONTACT)
+  rating     Int?              // 1-5 stars
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  // Relations
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  startup   Startup    @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  investor  Investor?  @relation(fields: [investorId], references: [id], onDelete: SetNull)
+  fund      Fund?      @relation(fields: [fundId], references: [id], onDelete: SetNull)
+  activities Activity[]
+
+  @@index([orgId])
+  @@index([startupId])
+  @@index([investorId])
+  @@index([fundId])
+  @@index([stage])
+  @@map("opportunities")
+}
+
+model Activity {
+  id            String   @id @default(cuid())
+  orgId         String
+  opportunityId String
+  userId        String
+  type          String   // 'note', 'call', 'meeting', 'email', etc.
+  note          String?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  org         Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([opportunityId])
+  @@index([userId])
+  @@map("activities")
+}
+
+model Submission {
+  id         String           @id @default(cuid())
+  orgId      String
+  startupId  String
+  investorId String?
+  fundId     String?
+  status     SubmissionStatus @default(PENDING)
+  deckFileId String?
+  createdAt  DateTime         @default(now())
+
+  // Relations
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  startup   Startup    @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  investor  Investor?  @relation(fields: [investorId], references: [id], onDelete: SetNull)
+  fund      Fund?      @relation(fields: [fundId], references: [id], onDelete: SetNull)
+  deckFile  FileObject? @relation(fields: [deckFileId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([startupId])
+  @@index([investorId])
+  @@index([fundId])
+  @@index([deckFileId])
+  @@map("submissions")
+}
+
+model DeckLink {
+  id        String   @id @default(cuid())
+  startupId String
+  token     String   @unique
+  expiresAt DateTime
+  maxViews  Int?
+  createdAt DateTime @default(now())
+
+  // Relations
+  startup    Startup     @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  viewEvents ViewEvent[]
+
+  @@index([startupId])
+  @@index([token])
+  @@map("deck_links")
+}
+
+model ViewEvent {
+  id             String   @id @default(cuid())
+  deckLinkId     String
+  page           Int
+  secondsVisible Int
+  viewerIp       String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  // Relations
+  deckLink DeckLink @relation(fields: [deckLinkId], references: [id], onDelete: Cascade)
+
+  @@index([deckLinkId])
+  @@map("view_events")
+}
+
+model DataRoomPermission {
+  id            String  @id @default(cuid())
+  orgId         String
+  fileObjectId  String
+  granteeUserId String?
+  granteeEmail  String?
+  canView       Boolean @default(true)
+  canDownload   Boolean @default(false)
+  createdAt     DateTime @default(now())
+
+  // Relations
+  org        Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  fileObject FileObject @relation(fields: [fileObjectId], references: [id], onDelete: Cascade)
+  grantee    User?      @relation(fields: [granteeUserId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([fileObjectId])
+  @@index([granteeUserId])
+  @@index([granteeEmail])
+  @@map("data_room_permissions")
+}
+
+model Program {
+  id                  String    @id @default(cuid())
+  orgId               String
+  title               String
+  description         String
+  tags                Json      // Array of tags
+  applicationDeadline DateTime?
+  createdAt           DateTime  @default(now())
+
+  // Relations
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([orgId])
+  @@map("programs")
+}
+
+model Application {
+  id                  String            @id @default(cuid())
+  programId           String
+  orgId               String
+  startupId           String
+  status              ApplicationStatus @default(NEW)
+  score               Int?
+  assignedReviewerId  String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  // Relations
+  program   Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  org       Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  startup   Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  reviews   Review[]
+
+  @@index([programId])
+  @@index([orgId])
+  @@index([startupId])
+  @@index([status])
+  @@map("applications")
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  applicationId String
+  reviewerId    String
+  score         Int?
+  comment       String
+  createdAt     DateTime @default(now())
+
+  // Relations
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewer    User        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([reviewerId])
+  @@map("reviews")
+}
+
+model Perk {
+  id          String   @id @default(cuid())
+  orgId       String
+  title       String
+  description String
+  link        String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("perks")
+}
+
+model Update {
+  id         String    @id @default(cuid())
+  startupId  String
+  subject    String
+  body       String
+  createdAt  DateTime  @default(now())
+  archivedAt DateTime?
+
+  // Relations
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@index([startupId])
+  @@map("updates")
+}
+
+model Intro {
+  id        String      @id @default(cuid())
+  orgId     String
+  fromUserId String
+  toUserId  String?
+  toEmail   String?
+  startupId String?
+  status    IntroStatus @default(REQUESTED)
+  createdAt DateTime    @default(now())
+
+  // Relations
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  from      User     @relation("IntroSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to        User?    @relation("IntroReceiver", fields: [toUserId], references: [id], onDelete: SetNull)
+  startup   Startup? @relation(fields: [startupId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([startupId])
+  @@map("intros")
+}
+
+model SavedList {
+  id        String         @id @default(cuid())
+  orgId     String
+  ownerId   String
+  name      String
+  type      SavedListType
+  createdAt DateTime       @default(now())
+
+  // Relations
+  org   Org             @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items SavedListItem[]
+
+  @@index([orgId])
+  @@index([ownerId])
+  @@index([type])
+  @@map("saved_lists")
+}
+
+model SavedListItem {
+  id           String   @id @default(cuid())
+  savedListId  String
+  entityId     String   // Reference to startup/investor ID
+  createdAt    DateTime @default(now())
+
+  // Relations
+  savedList SavedList @relation(fields: [savedListId], references: [id], onDelete: Cascade)
+
+  @@index([savedListId])
+  @@index([entityId])
+  @@map("saved_list_items")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([readAt])
+  @@map("notifications")
+}
+
+model FileObject {
+  id        String   @id @default(cuid())
+  orgId     String
+  ownerId   String
+  key       String
+  bucket    String
+  region    String
+  etag      String?
+  size      Int
+  mime      String
+  folderId  String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  org           Org                  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner         User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  permissions   DataRoomPermission[]
+  submissions   Submission[]
+
+  @@index([orgId])
+  @@index([ownerId])
+  @@index([key])
+  @@map("file_objects")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+// Enums
+enum Role {
+  FOUNDER
+  INVESTOR
+  ADMIN
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum Stage {
+  PRE_SEED
+  SEED
+  SERIES_A
+  SERIES_B
+  SERIES_C
+  LATER_STAGE
+}
+
+enum OpportunityStage {
+  TO_CONTACT
+  CONTACTED
+  MEETING
+  DILIGENCE
+  COMMITTED
+  LOST
+}
+
+enum SubmissionStatus {
+  PENDING
+  REVIEWED
+  ACCEPTED
+  REJECTED
+}
+
+enum ApplicationStatus {
+  NEW
+  IN_REVIEW
+  ACCEPTED
+  REJECTED
+  WAITLIST
+}
+
+enum IntroStatus {
+  REQUESTED
+  SENT
+  ACCEPTED
+  DECLINED
+  COMPLETED
+}
+
+enum SavedListType {
+  INVESTORS
+  STARTUPS
+}
