@@ -1,5 +1,5 @@
 'use client';
-export const dynamic = 'force-dynamic'; // ✅ prevents Vercel prerender error
+export const dynamic = 'force-dynamic'; // ✅ keep this second
 
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
@@ -12,7 +12,7 @@ export default function VerifyPage() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState('');
 
-  // ✅ safely read the email from URL params after mount
+  // ✅ safely extract email after mount
   useEffect(() => {
     const paramEmail = searchParams?.get('email') || '';
     setEmail(paramEmail);
