@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Globe, Briefcase, Wallet, CheckCircle2, ChevronRight } from "lucide-react";
-import Header from "@/components/layout/header";
 
 export default function InvestorOnboarding() {
   const router = useRouter();
@@ -37,7 +36,7 @@ export default function InvestorOnboarding() {
 
   return (
     <>
-    <Header/>
+
     <div className="container-fluid">
       <main className="min-h-[calc(100vh-64px)] bg-gradient-to-b from-background to-muted/30">
         <section className="px-4 py-8 md:py-12">

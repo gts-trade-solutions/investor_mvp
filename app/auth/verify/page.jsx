@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic'; // ✅ keep this second
+export const dynamic = 'force-dynamic'; 
 import React from 'react'
 import VerifyPage from './verify';
 

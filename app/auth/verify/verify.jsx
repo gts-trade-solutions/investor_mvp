@@ -1,57 +1,54 @@
 'use client';
 
-
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { createBrowserSupabase } from '@/lib/supabase/browser';
+import supabase from '@/lib/supabaseClient';
 
 export default function VerifyPage() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(null);
 
-  // ✅ safely extract email after mount
+  // Pull ?email=... safely after mount
   useEffect(() => {
-    const paramEmail = searchParams?.get('email') || '';
-    setEmail(paramEmail);
+    setEmail(searchParams?.get('email') || '');
   }, [searchParams]);
 
-  // 🔁 resend verification email
   const resend = async () => {
     if (!email) return;
     setSending(true);
-    setMsg('');
-
+    setMsg(null);
     try {
-      const supabase = createBrowserSupabase();
+      const origin =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_SITE_URL;
+
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+        options: { emailRedirectTo: `${origin}/auth/callback?next=/dashboard` },
       });
 
       if (error) throw error;
       setMsg('✅ Verification email sent successfully.');
     } catch (err) {
-      console.error('Resend error:', err);
-      setMsg('❌ Something went wrong. Please try again.');
+      setMsg(`❌ ${err?.message || 'Something went wrong. Please try again.'}`);
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50">
-      <div className="max-w-md w-full space-y-6 text-center bg-white p-6 rounded-xl shadow-sm">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="card max-w-md w-full text-center p-6 space-y-6">
         <h1 className="text-2xl font-bold">Confirm your email</h1>
 
         {email ? (
-          <p>
-            We sent a verification link to <b>{email}</b>. <br />
+          <p className="text-muted-foreground">
+            We sent a verification link to <b className="text-foreground">{email}</b>.<br />
             After you click it, you’ll be redirected automatically.
           </p>
         ) : (
@@ -64,19 +61,14 @@ export default function VerifyPage() {
           <button
             disabled={!email || sending}
             onClick={resend}
-            className={`px-4 py-2 border rounded transition ${
-              sending
-                ? 'opacity-60 cursor-not-allowed'
-                : 'hover:bg-gray-100 active:scale-95'
+            className={`px-4 py-2 rounded border transition ${
+              sending ? 'opacity-60 cursor-not-allowed' : 'hover:bg-muted active:scale-95'
             }`}
           >
             {sending ? 'Resending…' : 'Resend email'}
           </button>
 
-          <a
-            href="mailto:"
-            className="underline text-blue-600 hover:text-blue-800"
-          >
+        <a href="mailto:" className="underline text-primary hover:opacity-80">
             Open mail app
           </a>
         </div>
@@ -84,11 +76,7 @@ export default function VerifyPage() {
         {msg && (
           <p
             className={`text-sm ${
-              msg.startsWith('✅')
-                ? 'text-green-600'
-                : msg.startsWith('❌')
-                ? 'text-red-600'
-                : 'text-gray-700'
+              msg.startsWith('✅') ? 'text-green-600' : msg.startsWith('❌') ? 'text-red-600' : ''
             }`}
           >
             {msg}
@@ -97,10 +85,7 @@ export default function VerifyPage() {
 
         <p className="text-sm text-muted-foreground">
           Wrong address?{' '}
-          <Link
-            href="/auth/signup"
-            className="underline text-blue-600 hover:text-blue-800"
-          >
+          <Link href="/auth/signup" className="underline text-primary hover:opacity-80">
             Use another email
           </Link>
         </p>

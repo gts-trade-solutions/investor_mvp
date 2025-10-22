@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Globe, MapPin, Building2, Tags, Users, DollarSign, CheckCircle2, ChevronRight } from 'lucide-react';
-import Header from '@/components/layout/header';
 
 export default async function FounderOnboarding({ searchParams }) {
   const supabase = createServerSupabase();
@@ -29,7 +28,7 @@ export default async function FounderOnboarding({ searchParams }) {
 
   return (
     <>
-    <Header />
+   
       <div className="container-fluid">
         <main className="min-h-[calc(100vh-64px)] bg-gradient-to-b from-background to-muted/30">
           <section className="px-4 py-8 md:py-12">
@@ -99,7 +98,7 @@ export default async function FounderOnboarding({ searchParams }) {
                           <Label htmlFor="website">Website</Label>
                           <div className="relative">
                             <Globe className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input id="website" name="website" type="url" placeholder="https://acme.com" className="pl-9"
+                            <Input id="website" name="website" type="text" placeholder="https://acme.com" className="pl-9"
                                    defaultValue={founder?.website ?? ''} />
                           </div>
                           <p className="text-xs text-muted-foreground">Use your main marketing site if you have one.</p>
