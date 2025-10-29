@@ -25,7 +25,7 @@ function SignUpForm() {
   useEffect(() => {
     const roleParam = searchParams.get('role');
     if (roleParam && ['founder', 'investor'].includes(roleParam.toLowerCase())) {
-      setFormData(prev => ({ ...prev, role: roleParam.toUpperCase() }));
+      setFormData((prev) => ({ ...prev, role: roleParam.toUpperCase() }));
     }
   }, [searchParams]);
 
@@ -43,8 +43,9 @@ function SignUpForm() {
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.message || 'Failed to create account');
 
-      // carry role to verify page (used for "resend" next target)
-      router.push(`/auth/verify?email=${encodeURIComponent(formData.email)}&role=${formData.role}`);
+      // ✅ Hard navigation so layout re-reads auth cookies and Header updates
+      // If email confirmations are ON, payload.next will be /auth/verify?... (still correct)
+      window.location.assign(payload.next || '/');
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -66,7 +67,7 @@ function SignUpForm() {
             <Button
               type="button"
               variant={formData.role === 'FOUNDER' ? 'default' : 'outline'}
-              onClick={() => setFormData(prev => ({ ...prev, role: 'FOUNDER' }))}
+              onClick={() => setFormData((prev) => ({ ...prev, role: 'FOUNDER' }))}
               disabled={isLoading}
             >
               Founder
@@ -74,7 +75,7 @@ function SignUpForm() {
             <Button
               type="button"
               variant={formData.role === 'INVESTOR' ? 'default' : 'outline'}
-              onClick={() => setFormData(prev => ({ ...prev, role: 'INVESTOR' }))}
+              onClick={() => setFormData((prev) => ({ ...prev, role: 'INVESTOR' }))}
               disabled={isLoading}
             >
               Investor
@@ -88,7 +89,7 @@ function SignUpForm() {
                 id="name"
                 placeholder="John Doe"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 required
                 disabled={isLoading}
               />
@@ -100,7 +101,7 @@ function SignUpForm() {
                 type="email"
                 placeholder="your@email.com"
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                 required
                 disabled={isLoading}
               />
@@ -112,7 +113,7 @@ function SignUpForm() {
                 type="password"
                 placeholder="Minimum 8 characters"
                 value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                 required
                 disabled={isLoading}
                 minLength={8}

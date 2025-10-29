@@ -13,16 +13,18 @@ import { useToast } from "@/hooks/use-toast";
 function SignInFormInner() {
   const [isLoading, setIsLoading] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
+  const [errorMsg, setErrorMsg] = useState(null);
   const router = useRouter();
   const search = useSearchParams();
   const { toast } = useToast();
 
-  // if next is provided, always prefer it (e.g. /onboarding/founder)
   const next = search.get("next") || null;
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMsg(null);
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: form.email,
@@ -30,17 +32,45 @@ function SignInFormInner() {
       });
 
       if (error) {
+        // Normalize common Supabase errors
+        const msg = String(error.message || "").toLowerCase();
+
+        if (
+          /invalid login credentials|invalid email or password|invalid_grant/.test(msg)
+        ) {
+          setErrorMsg("Incorrect email or password.");
+          toast({
+            title: "Sign in failed",
+            description: "Incorrect email or password.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (/email not confirmed|confirm your email|email_not_confirmed/.test(msg)) {
+          setErrorMsg("Email not confirmed. Please check your inbox for the verification link.");
+          toast({
+            title: "Email not confirmed",
+            description: "Check your inbox for the verification link, then try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Fallback for any other auth error
+        setErrorMsg(error.message || "Could not sign in.");
         toast({ title: "Sign in failed", description: error.message, variant: "destructive" });
         return;
       }
 
-      // If guard sent us here with ?next=..., go there first
+      // Success
       if (next) {
-        router.push(next);
+        // honor guard-provided destination
+        window.location.assign(next); // hard nav so server layout re-reads cookies
         return;
       }
 
-      // Fallback: route by role (optional)
+      // Route by role as a fallback
       let role = String(data?.user?.user_metadata?.role || "").toUpperCase();
       if (!role) {
         const { data: profile } = await supabase
@@ -50,7 +80,8 @@ function SignInFormInner() {
           .single();
         if (profile?.role) role = String(profile.role).toUpperCase();
       }
-      router.push(role === "INVESTOR" ? "/investor" : "/founder");
+
+      window.location.assign(role === "INVESTOR" ? "/investor" : "/founder");
     } finally {
       setIsLoading(false);
     }
@@ -90,6 +121,12 @@ function SignInFormInner() {
                 minLength={8}
               />
             </div>
+
+            {/* Inline error message */}
+            {errorMsg && (
+              <p className="text-sm text-red-600 text-center">{errorMsg}</p>
+            )}
+
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>

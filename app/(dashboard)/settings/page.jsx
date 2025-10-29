@@ -63,6 +63,10 @@ export default function Settings() {
     getAll()
   }, [])
 
+  // 👉 role flags (used only to show/hide tabs & sections)
+  const isFounder = profile.role === 'FOUNDER'
+  const isInvestor = profile.role === 'INVESTOR'
+
   // Profile update (demo)
   const handleProfileUpdate = async (e) => {
     e.preventDefault()
@@ -206,9 +210,11 @@ export default function Settings() {
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
-          {/* Show both tabs so a single user can edit both profiles */}
-          <TabsTrigger value="founder">Founder Details</TabsTrigger>
-          <TabsTrigger value="investor">Investor Details</TabsTrigger>
+
+          {/* Show only the tab that matches the role */}
+          {isFounder && <TabsTrigger value="founder">Founder Details</TabsTrigger>}
+          {isInvestor && <TabsTrigger value="investor">Investor Details</TabsTrigger>}
+          {/* If role is neither, you could show both or none; current behavior hides both */}
         </TabsList>
 
         {/* Profile Tab */}
@@ -280,172 +286,176 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
-        {/* Founder Details Tab */}
-        <TabsContent value="founder">
-          <Card>
-            <CardHeader>
-              <CardTitle>Founder Details</CardTitle>
-              <CardDescription>Edit your company and business info</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {founder === null ? (
-                <p className="text-sm text-muted-foreground">Loading founder details...</p>
-              ) : (
-                <form onSubmit={handleFounderUpdate} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Company Name</Label>
-                      <Input
-                        value={founder.company_name || ''}
-                        onChange={(e) => setFounder({ ...founder, company_name: e.target.value })}
-                      />
+        {/* Founder Details Tab (visible only to founders) */}
+        {isFounder && (
+          <TabsContent value="founder">
+            <Card>
+              <CardHeader>
+                <CardTitle>Founder Details</CardTitle>
+                <CardDescription>Edit your company and business info</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {founder === null ? (
+                  <p className="text-sm text-muted-foreground">Loading founder details...</p>
+                ) : (
+                  <form onSubmit={handleFounderUpdate} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Company Name</Label>
+                        <Input
+                          value={founder.company_name || ''}
+                          onChange={(e) => setFounder({ ...founder, company_name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Website</Label>
+                        <Input
+                          value={founder.website || ''}
+                          onChange={(e) => setFounder({ ...founder, website: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Website</Label>
-                      <Input
-                        value={founder.website || ''}
-                        onChange={(e) => setFounder({ ...founder, website: e.target.value })}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Industry</Label>
-                      <Input
-                        value={founder.industry || ''}
-                        onChange={(e) => setFounder({ ...founder, industry: e.target.value })}
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Industry</Label>
+                        <Input
+                          value={founder.industry || ''}
+                          onChange={(e) => setFounder({ ...founder, industry: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>HQ Country</Label>
+                        <Input
+                          value={founder.country || ''}
+                          onChange={(e) => setFounder({ ...founder, country: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>HQ Country</Label>
-                      <Input
-                        value={founder.country || ''}
-                        onChange={(e) => setFounder({ ...founder, country: e.target.value })}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Stage</Label>
+                        <Input
+                          value={founder.stage || ''}
+                          onChange={(e) => setFounder({ ...founder, stage: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Team Size</Label>
+                        <Input
+                          type="number"
+                          value={founder.team_size || ''}
+                          onChange={(e) => setFounder({ ...founder, team_size: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Capital Required (USD)</Label>
+                        <Input
+                          type="number"
+                          value={founder.capital_raised_usd || ''}
+                          onChange={(e) => setFounder({ ...founder, capital_raised_usd: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
-                      <Label>Stage</Label>
+                      <Label>Tagline</Label>
                       <Input
-                        value={founder.stage || ''}
-                        onChange={(e) => setFounder({ ...founder, stage: e.target.value })}
+                        value={founder.tagline || ''}
+                        onChange={(e) => setFounder({ ...founder, tagline: e.target.value })}
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label>Team Size</Label>
-                      <Input
-                        type="number"
-                        value={founder.team_size || ''}
-                        onChange={(e) => setFounder({ ...founder, team_size: e.target.value })}
+                      <Label>Problem & Solution</Label>
+                      <textarea
+                        rows={4}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        value={founder.problem_solution || ''}
+                        onChange={(e) => setFounder({ ...founder, problem_solution: e.target.value })}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Capital Required (USD)</Label>
-                      <Input
-                        type="number"
-                        value={founder.capital_raised_usd || ''}
-                        onChange={(e) => setFounder({ ...founder, capital_raised_usd: e.target.value })}
-                      />
+
+                    <Button type="submit" disabled={loading}>
+                      {loading ? 'Saving...' : 'Save Founder Info'}
+                    </Button>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Investor Details Tab (visible only to investors) */}
+        {isInvestor && (
+          <TabsContent value="investor">
+            <Card>
+              <CardHeader>
+                <CardTitle>Investor Details</CardTitle>
+                <CardDescription>Edit your organization and investment info</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {investor === null ? (
+                  <p className="text-sm text-muted-foreground">Loading investor details...</p>
+                ) : (
+                  <form onSubmit={handleInvestorUpdate} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Investor Type</Label>
+                        <Input
+                          value={investor.investor_type || ''}
+                          onChange={(e) => setInvestor({ ...investor, investor_type: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Geographies (geos)</Label>
+                        <Input
+                          value={investor.geos || ''}
+                          onChange={(e) => setInvestor({ ...investor, geos: e.target.value })}
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label>Tagline</Label>
-                    <Input
-                      value={founder.tagline || ''}
-                      onChange={(e) => setFounder({ ...founder, tagline: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Problem & Solution</Label>
-                    <textarea
-                      rows={4}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      value={founder.problem_solution || ''}
-                      onChange={(e) => setFounder({ ...founder, problem_solution: e.target.value })}
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={loading}>
-                    {loading ? 'Saving...' : 'Save Founder Info'}
-                  </Button>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Investor Details Tab */}
-        <TabsContent value="investor">
-          <Card>
-            <CardHeader>
-              <CardTitle>Investor Details</CardTitle>
-              <CardDescription>Edit your organization and investment info</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {investor === null ? (
-                <p className="text-sm text-muted-foreground">Loading investor details...</p>
-              ) : (
-                <form onSubmit={handleInvestorUpdate} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Investor Type</Label>
-                      <Input
-                        value={investor.investor_type || ''}
-                        onChange={(e) => setInvestor({ ...investor, investor_type: e.target.value })}
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Check Min (USD)</Label>
+                        <Input
+                          type="number"
+                          value={investor.check_min_usd ?? ''}
+                          onChange={(e) => setInvestor({ ...investor, check_min_usd: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Check Max (USD)</Label>
+                        <Input
+                          type="number"
+                          value={investor.check_max_usd ?? ''}
+                          onChange={(e) => setInvestor({ ...investor, check_max_usd: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Geographies (geos)</Label>
-                      <Input
-                        value={investor.geos || ''}
-                        onChange={(e) => setInvestor({ ...investor, geos: e.target.value })}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Check Min (USD)</Label>
+                      <Label>Sectors</Label>
                       <Input
-                        type="number"
-                        value={investor.check_min_usd ?? ''}
-                        onChange={(e) => setInvestor({ ...investor, check_min_usd: e.target.value })}
+                        value={investor.sectors || ''}
+                        onChange={(e) => setInvestor({ ...investor, sectors: e.target.value })}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Tip: comma-separate multiple sectors (e.g., "Fintech, AI, SaaS").
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Check Max (USD)</Label>
-                      <Input
-                        type="number"
-                        value={investor.check_max_usd ?? ''}
-                        onChange={(e) => setInvestor({ ...investor, check_max_usd: e.target.value })}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label>Sectors</Label>
-                    <Input
-                      value={investor.sectors || ''}
-                      onChange={(e) => setInvestor({ ...investor, sectors: e.target.value })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Tip: comma-separate multiple sectors (e.g., "Fintech, AI, SaaS").
-                    </p>
-                  </div>
-
-                  <Button type="submit" disabled={loading}>
-                    {loading ? 'Saving...' : 'Save Investor Info'}
-                  </Button>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? 'Saving...' : 'Save Investor Info'}
+                    </Button>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

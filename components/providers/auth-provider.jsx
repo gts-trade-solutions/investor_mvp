@@ -5,21 +5,23 @@ import supabase from '@/lib/supabaseClient';
 
 const AuthCtx = createContext({ user: null, loading: true });
 
-export default function AuthProvider({ children }) {
-  const [state, setState] = useState({ user: null, loading: true });
+export default function AuthProvider({ children, initialUser = null }) {
+  const [user, setUser] = useState(initialUser);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
-    async function load() {
-      const { data } = await supabase.auth.getUser();
-      if (mounted) setState({ user: data.user || null, loading: false });
-    }
-    load();
+    (async () => {
+      // Fast boot from client storage; if none, user stays whatever initialUser was.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (session?.user) setUser(session.user);
+      setLoading(false);
+    })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setState({ user: session?.user || null, loading: false });
+      setUser(session?.user ?? null);
     });
 
     return () => {
@@ -28,7 +30,11 @@ export default function AuthProvider({ children }) {
     };
   }, []);
 
-  return <AuthCtx.Provider value={state}>{children}</AuthCtx.Provider>;
+  return (
+    <AuthCtx.Provider value={{ user, loading }}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }
 
 export function useAuth() {
