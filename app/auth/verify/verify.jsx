@@ -8,12 +8,14 @@ import supabase from '@/lib/supabaseClient';
 export default function VerifyPage() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState(''); // FOUNDER | INVESTOR
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  // Pull ?email=... safely after mount
   useEffect(() => {
     setEmail(searchParams?.get('email') || '');
+    const r = (searchParams?.get('role') || '').toUpperCase();
+    if (r === 'FOUNDER' || r === 'INVESTOR') setRole(r);
   }, [searchParams]);
 
   const resend = async () => {
@@ -26,10 +28,17 @@ export default function VerifyPage() {
           ? window.location.origin
           : process.env.NEXT_PUBLIC_SITE_URL;
 
+      const next =
+        role === 'INVESTOR'
+          ? '/onboarding/investor'
+          : role === 'FOUNDER'
+          ? '/onboarding/founder'
+          : '/dashboard';
+
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: `${origin}/auth/callback?next=/dashboard` },
+        options: { emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}` },
       });
 
       if (error) throw error;
@@ -52,9 +61,7 @@ export default function VerifyPage() {
             After you click it, you’ll be redirected automatically.
           </p>
         ) : (
-          <p className="text-muted-foreground">
-            Please provide a valid email address during signup.
-          </p>
+          <p className="text-muted-foreground">Please provide a valid email address during signup.</p>
         )}
 
         <div className="flex gap-3 justify-center">
@@ -68,7 +75,7 @@ export default function VerifyPage() {
             {sending ? 'Resending…' : 'Resend email'}
           </button>
 
-        <a href="mailto:" className="underline text-primary hover:opacity-80">
+          <a href="mailto:" className="underline text-primary hover:opacity-80">
             Open mail app
           </a>
         </div>

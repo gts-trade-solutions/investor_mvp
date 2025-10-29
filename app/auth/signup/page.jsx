@@ -22,7 +22,6 @@ function SignUpForm() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // ✅ read ?role=founder|investor from URL
   useEffect(() => {
     const roleParam = searchParams.get('role');
     if (roleParam && ['founder', 'investor'].includes(roleParam.toLowerCase())) {
@@ -30,35 +29,28 @@ function SignUpForm() {
     }
   }, [searchParams]);
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-  try {
-    const res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData), // includes { name, email, password, role }
-    });
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData), // { name, email, password, role }
+      });
 
-    const payload = await res.json();
-    if (!res.ok) throw new Error(payload.message || 'Failed to create account');
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.message || 'Failed to create account');
 
-    // Optional toast
-    // toast({ title: 'Check your email', description: 'We sent a verification link.' });
-
-    // ⬇️ Redirect to the "confirm your email" page
-    router.push(`/auth/verify?email=${encodeURIComponent(formData.email)}`);
-  } catch (err) {
-    toast({
-      title: 'Error',
-      description: err.message,
-      variant: 'destructive',
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
+      // carry role to verify page (used for "resend" next target)
+      router.push(`/auth/verify?email=${encodeURIComponent(formData.email)}&role=${formData.role}`);
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -148,5 +140,5 @@ export default function SignUpPage() {
     <Suspense fallback={<div>Loading...</div>}>
       <SignUpForm />
     </Suspense>
-  );  
+  );
 }
