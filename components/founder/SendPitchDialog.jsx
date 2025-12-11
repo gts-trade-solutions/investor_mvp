@@ -1,149 +1,176 @@
-'use client';
+'use client'
 
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react'
+import supabase from '@/lib/supabaseClient'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 
-export default function SendPitchDialog({
+/**
+ * Props:
+ * - triggerButton: ReactNode – button that opens the dialog
+ * - defaultInvestorId: if present, we DON'T show investor input, we use this id
+ * - defaultInvestorName: label to show "Sending to X"
+ * - onSent: async callback({ investor_id, message, pdf_url })
+ */
+export function SendPitchDialog({
   triggerButton,
-  preselectedInvestors = [],     // just for display (names)
-  preselectedInvestorIds = [],   // REAL ids that API expects
+  defaultInvestorId,
+  defaultInvestorName,
+  onSent,
 }) {
-  const [open, setOpen] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [file, setFile] = useState(null);      // ⬅️ selected PDF
-  const [loading, setLoading] = useState(false);
-  const fileInputRef = useRef(null);
+  const [open, setOpen] = useState(false)
+  const [investorId, setInvestorId] = useState(defaultInvestorId || '')
+  const [message, setMessage] = useState('')
+  const [file, setFile] = useState(null) // plain JS
+  const [submitting, setSubmitting] = useState(false)
 
-  async function onSend() {
+  // keep local investorId in sync if prop changes
+  useEffect(() => {
+    if (defaultInvestorId) {
+      setInvestorId(defaultInvestorId)
+    }
+  }, [defaultInvestorId])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+
+    const finalInvestorId = defaultInvestorId || investorId
+
+    if (!finalInvestorId) {
+      alert('Investor is required.')
+      return
+    }
+
     try {
-      setLoading(true);
+      setSubmitting(true)
 
-      if (!subject.trim() || !message.trim()) {
-        toast.error('Subject and message are required');
-        setLoading(false);
-        return;
-      }
+      // 1) Upload PDF if present
+      let pdfUrl = null
 
-      const investorIds = preselectedInvestorIds;
-      if (!investorIds.length) {
-        toast.error('No investors specified');
-        setLoading(false);
-        return;
-      }
-
-      // Build multipart form data so we can send the PDF file
-      const formData = new FormData();
-      formData.append('subject', subject);
-      formData.append('message', message);
-      formData.append('investorIds', JSON.stringify(investorIds));
       if (file) {
-        formData.append('deck', file); // "deck" field contains the PDF
+        const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
+        const path = `pitch-decks/${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}.${ext}`
+
+        const { data, error } = await supabase.storage
+          .from('pitch_decks') // make sure this bucket exists
+          .upload(path, file)
+
+        if (error) {
+          console.error('Supabase storage upload error:', error)
+          throw new Error('Failed to upload pitch deck')
+        }
+
+        const { data: publicData } = supabase.storage
+          .from('pitch_decks')
+          .getPublicUrl(data.path)
+
+        pdfUrl = publicData.publicUrl
       }
 
-      const res = await fetch('/api/pitches', {
-        method: 'POST',
-        body: formData, // 🔥 no Content-Type header – browser sets it
-      });
+      // 2) Let parent (e.g. InvestorCard) handle DB + notification + credits
+      if (onSent) {
+        await onSent({
+          investor_id: finalInvestorId,
+          message,
+          pdf_url: pdfUrl,
+        })
+      }
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to send');
-
-      toast.success('Pitch sent to investors!');
-      setOpen(false);
-      setSubject('');
-      setMessage('');
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    } catch (e) {
-      toast.error(e.message || 'Something went wrong');
+      // 3) Reset & close
+      setOpen(false)
+      setMessage('')
+      setFile(null)
+    } catch (err) {
+      console.error('Send pitch failed:', err)
+      alert(err?.message || 'Failed to send pitch.')
     } finally {
-      setLoading(false);
+      setSubmitting(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{triggerButton}</DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Send pitch</DialogTitle>
-        </DialogHeader>
 
-        {!!preselectedInvestors.length && (
-          <div className="text-sm text-muted-foreground">
-            To:&nbsp;
-            <span className="font-medium">
-              {preselectedInvestors.join(', ')}
-            </span>
+      <DialogContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Send pitch</DialogTitle>
+            <DialogDescription>
+              Write a short note and optionally attach your pitch deck as a PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* If we have defaultInvestorId (usually from card), show label only */}
+          {defaultInvestorId ? (
+            <div className="space-y-1">
+              <Label>Sending to</Label>
+              <p className="text-sm font-medium">
+                {defaultInvestorName || 'Selected investor'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="investor-id">Investor ID</Label>
+              <Input
+                id="investor-id"
+                value={investorId}
+                onChange={(e) => setInvestorId(e.target.value)}
+                placeholder="Investor auth user id"
+                required
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="message">Message</Label>
+            <Textarea
+              id="message"
+              rows={4}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Hi, here’s a quick overview of what we’re building…"
+            />
           </div>
-        )}
 
-        <div className="space-y-4 mt-2">
-          <Input
-            placeholder="Subject"
-            value={subject}
-            onChange={e => setSubject(e.target.value)}
-          />
-
-          <Textarea
-            rows={8}
-            placeholder="Introduce your startup, traction, and the ask…"
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-          />
-
-          {/* 👇 PDF "Choose file" upload */}
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Pitch deck (PDF, optional)</p>
-
-            {/* hidden real input */}
-            <input
-              ref={fileInputRef}
+          <div className="space-y-2">
+            <Label htmlFor="deck">Pitch deck (PDF, optional)</Label>
+            <Input
+              id="deck"
               type="file"
               accept="application/pdf"
-              className="hidden"
-              onChange={e => setFile(e.target.files?.[0] || null)}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Choose file
-              </Button>
-              <span className="text-xs text-muted-foreground truncate max-w-[220px]">
-                {file ? file.name : 'No file chosen'}
-              </span>
-            </div>
           </div>
-        </div>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button onClick={onSend} disabled={loading}>
-            {loading ? 'Sending…' : 'Send'}
-          </Button>
-        </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Sending…' : 'Send pitch'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

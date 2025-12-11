@@ -1,8 +1,15 @@
+// app/founder/fundraising-crm/page.jsx (or wherever this lives)
 'use client'
 
 import { useState, useEffect } from 'react'
 import supabase from '@/lib/supabaseClient'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -16,8 +23,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, MoreHorizontal, Calendar, Phone, Mail } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Plus, MoreHorizontal } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 import {
@@ -30,7 +43,6 @@ import {
   useDroppable,
 } from '@dnd-kit/core'
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -40,18 +52,76 @@ import { CSS } from '@dnd-kit/utilities'
 
 /* ─── Stage config ─────────────────────────────────────── */
 const PIPELINE_STAGES = [
-  { id: 'TO_CONTACT', title: 'To Contact', bar: 'bg-slate-800/70 text-slate-100', chip: 'bg-slate-900/60' },
-  { id: 'CONTACTED',  title: 'Contacted',  bar: 'bg-blue-800/70 text-blue-50',   chip: 'bg-blue-900/60'  },
-  { id: 'MEETING',    title: 'Meeting',    bar: 'bg-amber-800/70 text-amber-50', chip: 'bg-amber-900/60' },
-  { id: 'DILIGENCE',  title: 'Due Diligence', bar: 'bg-violet-800/70 text-violet-50', chip: 'bg-violet-900/60' },
-  { id: 'COMMITTED',  title: 'Committed',  bar: 'bg-emerald-800/70 text-emerald-50', chip: 'bg-emerald-900/60' },
-  { id: 'LOST',       title: 'Lost',       bar: 'bg-rose-800/70 text-rose-50',   chip: 'bg-rose-900/60'  },
+  {
+    id: 'TO_CONTACT',
+    title: 'To Contact',
+    bar: 'bg-slate-800/70 text-slate-100',
+    chip: 'bg-slate-900/60',
+  },
+  {
+    id: 'CONTACTED',
+    title: 'Contacted',
+    bar: 'bg-blue-800/70 text-blue-50',
+    chip: 'bg-blue-900/60',
+  },
+  {
+    id: 'MEETING',
+    title: 'Meeting',
+    bar: 'bg-amber-800/70 text-amber-50',
+    chip: 'bg-amber-900/60',
+  },
+  {
+    id: 'DILIGENCE',
+    title: 'Due Diligence',
+    bar: 'bg-violet-800/70 text-violet-50',
+    chip: 'bg-violet-900/60',
+  },
+  {
+    id: 'COMMITTED',
+    title: 'Committed',
+    bar: 'bg-emerald-800/70 text-emerald-50',
+    chip: 'bg-emerald-900/60',
+  },
+  {
+    id: 'LOST',
+    title: 'Lost',
+    bar: 'bg-rose-800/70 text-rose-50',
+    chip: 'bg-rose-900/60',
+  },
 ]
 
+/* Helper to normalize DB row -> card props */
+function mapOpportunityRow(row) {
+  return {
+    id: row.id,
+    stage: row.stage,
+    rating: row.rating,
+    notes: row.notes,
+    updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+    investor_id: row.investor_id,
+  }
+}
+
 /* ─── Sortable card ────────────────────────────────────── */
-function SortableOpportunity({ opportunity, onEdit, onAddActivity }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: opportunity.id })
+function SortableOpportunity({ opportunity, onEdit, investors }) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: opportunity.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
+
+  // Look up investor details from investors[] by user_id
+  const investor = investors.find(
+    (inv) => inv.user_id === opportunity.investor_id
+  )
+
+  const investorName =
+    investor?.display_name ||
+    investor?.name ||
+    investor?.firm_name ||
+    investor?.investor_type ||
+    'Unknown investor'
+
+  const orgName =
+    investor?.org_name || investor?.firm_name || investor?.sectors || ''
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
@@ -59,12 +129,15 @@ function SortableOpportunity({ opportunity, onEdit, onAddActivity }) {
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
             <div>
-              <CardTitle className="text-sm">{opportunity.investor.name}</CardTitle>
-              <CardDescription className="text-xs">
-                {opportunity.investor.org.name}
-              </CardDescription>
+              <CardTitle className="text-sm">{investorName}</CardTitle>
+              <CardDescription className="text-xs">{orgName}</CardDescription>
             </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEdit(opportunity)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => onEdit(opportunity)}
+            >
               <MoreHorizontal className="h-3 w-3" />
             </Button>
           </div>
@@ -77,7 +150,11 @@ function SortableOpportunity({ opportunity, onEdit, onAddActivity }) {
                 {[...Array(5)].map((_, i) => (
                   <span
                     key={i}
-                    className={`text-xs ${i < opportunity.rating ? 'text-yellow-400' : 'text-gray-300'}`}
+                    className={`text-xs ${
+                      i < opportunity.rating
+                        ? 'text-yellow-400'
+                        : 'text-gray-300'
+                    }`}
                   >
                     ★
                   </span>
@@ -91,20 +168,12 @@ function SortableOpportunity({ opportunity, onEdit, onAddActivity }) {
           </div>
 
           {opportunity.notes && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{opportunity.notes}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {opportunity.notes}
+            </p>
           )}
 
-          <div className="flex gap-1">
-            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => onAddActivity(opportunity, 'call')}>
-              <Phone className="h-3 w-3 mr-1" /> Call
-            </Button>
-            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => onAddActivity(opportunity, 'email')}>
-              <Mail className="h-3 w-3 mr-1" /> Email
-            </Button>
-            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => onAddActivity(opportunity, 'meeting')}>
-              <Calendar className="h-3 w-3 mr-1" /> Meeting
-            </Button>
-          </div>
+          {/* Call / Email / Meeting buttons removed as requested */}
         </CardContent>
       </Card>
     </div>
@@ -120,7 +189,10 @@ function Column({ stage, children, count }) {
       <div className={`rounded-xl ${stage.bar} mb-3 px-3 py-2`}>
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">{stage.title}</h3>
-          <Badge variant="secondary" className={`text-xs border-0 ${stage.chip}`}>
+          <Badge
+            variant="secondary"
+            className={`text-xs border-0 ${stage.chip}`}
+          >
             {count}
           </Badge>
         </div>
@@ -128,9 +200,15 @@ function Column({ stage, children, count }) {
 
       <div
         ref={setNodeRef}
-        className={`space-y-3 rounded-lg border border-border/40 p-2 transition-colors
-          ${isOver ? 'bg-muted/30' : 'bg-transparent'}`}
-        style={{ minHeight: 240, maxHeight: '70vh', overflowY: 'auto', willChange: 'transform' }}
+        className={`space-y-3 rounded-lg border border-border/40 p-2 transition-colors ${
+          isOver ? 'bg-muted/30' : 'bg-transparent'
+        }`}
+        style={{
+          minHeight: 240,
+          maxHeight: '70vh',
+          overflowY: 'auto',
+          willChange: 'transform',
+        }}
       >
         {children}
         {count === 0 && (
@@ -194,35 +272,15 @@ function AddOpportunityDialog({ open, onOpenChange, investors, onCreated }) {
           rating,
           notes,
           updated_at,
-          investor:investors (*)
+          founder_id,
+          investor_id
         `
         )
         .single()
 
       if (error) throw error
 
-      // map into card shape
-      const mapped = {
-        id: data.id,
-        stage: data.stage,
-        rating: data.rating,
-        notes: data.notes,
-        updatedAt: data.updated_at ? new Date(data.updated_at) : new Date(),
-        investor: {
-          name:
-            data.investor?.name ||
-            data.investor?.display_name ||
-            data.investor?.investor_type ||
-            'Unknown investor',
-          org: {
-            name:
-              data.investor?.org_name ||
-              data.investor?.firm_name ||
-              data.investor?.sectors ||
-              '',
-          },
-        },
-      }
+      const mapped = mapOpportunityRow(data)
 
       if (onCreated) onCreated(mapped)
 
@@ -266,7 +324,8 @@ function AddOpportunityDialog({ open, onOpenChange, investors, onCreated }) {
                 <SelectContent>
                   {investors.map((inv) => (
                     <SelectItem key={inv.user_id} value={inv.user_id}>
-                      {inv.investor_type || 'Investor'} – {inv.sectors || 'No sectors'}
+                      {inv.investor_type || 'Investor'} –{' '}
+                      {inv.sectors || 'No sectors'}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -315,7 +374,11 @@ function AddOpportunityDialog({ open, onOpenChange, investors, onCreated }) {
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving || investors.length === 0}>
@@ -333,14 +396,21 @@ export default function FundraisingCRM() {
   const [opportunities, setOpportunities] = useState([])
   const [investors, setInvestors] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activityDialog, setActivityDialog] = useState({ open: false, opportunity: null, type: null, notes: '' })
+  const [activityDialog, setActivityDialog] = useState({
+    open: false,
+    opportunity: null,
+    type: null,
+    notes: '',
+  })
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  /* Initial load */
   useEffect(() => {
     let cancelled = false
 
@@ -356,6 +426,7 @@ export default function FundraisingCRM() {
           window.location.href = '/auth/signin'
           return
         }
+        setCurrentUserId(user.id)
 
         // load investors
         const { data: investorRows, error: invError } = await supabase
@@ -374,37 +445,17 @@ export default function FundraisingCRM() {
             rating,
             notes,
             updated_at,
-            investor:investors (*)
+            founder_id,
+            investor_id
           `
           )
           .eq('founder_id', user.id)
           .order('updated_at', { ascending: false })
 
-        console.log('fundraising_opportunities:', { data, error })
         if (error) throw error
 
         if (!cancelled) {
-          const normalized = (data || []).map((row) => ({
-            id: row.id,
-            stage: row.stage,
-            rating: row.rating,
-            notes: row.notes,
-            updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
-            investor: {
-              name:
-                row.investor?.name ||
-                row.investor?.display_name ||
-                row.investor?.investor_type ||
-                'Unknown investor',
-              org: {
-                name:
-                  row.investor?.org_name ||
-                  row.investor?.firm_name ||
-                  row.investor?.sectors ||
-                  '',
-              },
-            },
-          }))
+          const normalized = (data || []).map(mapOpportunityRow)
           setOpportunities(normalized)
         }
       } catch (err) {
@@ -423,6 +474,50 @@ export default function FundraisingCRM() {
       cancelled = true
     }
   }, [])
+
+  /* Realtime sync: fundraising_opportunities */
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const channel = supabase
+      .channel(`fundraising_opportunities_${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fundraising_opportunities',
+        },
+        (payload) => {
+          const row = payload.new ?? payload.old
+          if (!row || row.founder_id !== currentUserId) return
+
+          if (payload.eventType === 'INSERT') {
+            setOpportunities((prev) => {
+              const mapped = mapOpportunityRow(payload.new)
+              const without = prev.filter((o) => o.id !== mapped.id)
+              return [mapped, ...without]
+            })
+          } else if (payload.eventType === 'UPDATE') {
+            setOpportunities((prev) => {
+              const mapped = mapOpportunityRow(payload.new)
+              const exists = prev.some((o) => o.id === mapped.id)
+              if (!exists) return [mapped, ...prev]
+              return prev.map((o) => (o.id === mapped.id ? mapped : o))
+            })
+          } else if (payload.eventType === 'DELETE') {
+            setOpportunities((prev) =>
+              prev.filter((o) => o.id !== payload.old.id)
+            )
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUserId])
 
   const stageOfItem = (itemId) => {
     const item = opportunities.find((o) => o.id === itemId)
@@ -460,26 +555,25 @@ export default function FundraisingCRM() {
     if (error) console.error('Error updating stage:', error)
   }
 
-  const handleAddActivity = (opportunity, type) => {
-    setActivityDialog({ open: true, opportunity, type, notes: '' })
-  }
-
   const handleSaveActivity = async () => {
     const { opportunity, type, notes } = activityDialog
     if (!opportunity || !type) return
 
     try {
-      const { error } = await supabase
-        .from('fundraising_activities')
-        .insert([
-          {
-            opportunity_id: opportunity.id,
-            activity_type: type,
-            notes,
-          },
-        ])
+      const { error } = await supabase.from('fundraising_activities').insert([
+        {
+          opportunity_id: opportunity.id,
+          activity_type: type,
+          notes,
+        },
+      ])
       if (error) throw error
-      setActivityDialog({ open: false, opportunity: null, type: null, notes: '' })
+      setActivityDialog({
+        open: false,
+        opportunity: null,
+        type: null,
+        notes: '',
+      })
     } catch (err) {
       console.error('Error saving activity:', err)
       alert('Failed to save activity')
@@ -496,6 +590,19 @@ export default function FundraisingCRM() {
       </div>
     )
   }
+
+  // For the activity dialog description (if you decide to use it later)
+  const activityInvestor =
+    activityDialog.opportunity &&
+    investors.find(
+      (inv) => inv.user_id === activityDialog.opportunity.investor_id
+    )
+  const activityInvestorName =
+    activityInvestor?.display_name ||
+    activityInvestor?.name ||
+    activityInvestor?.firm_name ||
+    activityInvestor?.investor_type ||
+    'this investor'
 
   return (
     <div className="space-y-6">
@@ -522,20 +629,27 @@ export default function FundraisingCRM() {
       />
 
       {/* Kanban board */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
         <div className="grid gap-6 overflow-x-auto pb-2 [grid-template-columns:repeat(6,minmax(280px,1fr))]">
           {PIPELINE_STAGES.map((stage) => {
             const items = getOpportunitiesByStage(stage.id)
             return (
               <div key={stage.id}>
-                <SortableContext items={items.map((o) => o.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext
+                  items={items.map((o) => o.id)}
+                  strategy={verticalListSortingStrategy}
+                >
                   <Column stage={stage} count={items.length}>
                     {items.map((opportunity) => (
                       <SortableOpportunity
                         key={opportunity.id}
                         opportunity={opportunity}
                         onEdit={() => {}}
-                        onAddActivity={handleAddActivity}
+                        investors={investors}
                       />
                     ))}
                   </Column>
@@ -546,7 +660,7 @@ export default function FundraisingCRM() {
         </div>
       </DndContext>
 
-      {/* Activity dialog */}
+      {/* Activity dialog (still here, but no call/email/meeting buttons on cards) */}
       <Dialog
         open={activityDialog.open}
         onOpenChange={(open) =>
@@ -560,7 +674,7 @@ export default function FundraisingCRM() {
             </DialogTitle>
             <DialogDescription>
               {activityDialog.opportunity &&
-                `Record your interaction with ${activityDialog.opportunity.investor.name}`}
+                `Record your interaction with ${activityInvestorName}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -589,7 +703,10 @@ export default function FundraisingCRM() {
                 rows={4}
                 value={activityDialog.notes}
                 onChange={(e) =>
-                  setActivityDialog((prev) => ({ ...prev, notes: e.target.value }))
+                  setActivityDialog((prev) => ({
+                    ...prev,
+                    notes: e.target.value,
+                  }))
                 }
                 placeholder="What happened in this interaction?"
               />
@@ -599,7 +716,12 @@ export default function FundraisingCRM() {
             <Button
               variant="outline"
               onClick={() =>
-                setActivityDialog({ open: false, opportunity: null, type: null, notes: '' })
+                setActivityDialog({
+                  open: false,
+                  opportunity: null,
+                  type: null,
+                  notes: '',
+                })
               }
             >
               Cancel

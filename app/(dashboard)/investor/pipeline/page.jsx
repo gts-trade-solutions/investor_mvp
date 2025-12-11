@@ -66,20 +66,31 @@ export default function InvestorPipeline() {
 
             if (profErr) {
               console.error('profiles lookup error:', profErr);
-            } else {
-              startupsById = Object.fromEntries(
-                (profs || []).map((p) => [p.id, p.full_name || ''])
-              );
+            } else if (profs) {
+              startupsById = {};
+              for (const p of profs) {
+                const safeName =
+                  (p.full_name && p.full_name.trim()) ||
+                  `(no profile) ${String(p.id).slice(0, 8)}…`;
+                startupsById[p.id] = safeName;
+              }
             }
           }
 
-          enriched = enriched.map((r) => ({
-            ...r,
-            startup: {
-              id: r.startup_id,
-              name: startupsById[r.startup_id] || 'Unknown startup',
-            },
-          }));
+          enriched = enriched.map((r) => {
+            const sid = r.startup_id;
+            const fallbackId = sid ? String(sid).slice(0, 8) : 'unknown';
+            const name =
+              startupsById[sid] || `(missing profile) ${fallbackId}…`;
+
+            return {
+              ...r,
+              startup: {
+                id: sid,
+                name: name || 'Unknown startup',
+              },
+            };
+          });
         }
 
         if (cancel) return;
@@ -177,7 +188,7 @@ function PipelineRow({ p, stage, currentUserId }) {
       <div className="flex items-center justify-between">
         <div className="text-sm">
           {/* show startup/founder name for the investor */}
-          <div className="font-medium">{p.startup?.name || '—'}</div>
+          <div className="font-medium">{p.startup?.name || 'Unknown startup'}</div>
           <div className="text-muted-foreground">
             {new Date(p.created_at).toLocaleDateString()}
           </div>
@@ -307,11 +318,9 @@ function ChatBox({ pipelineId, currentUserId }) {
 
     try {
       for (const file of files) {
-        // sanitize filename for storage key
         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const path = `${pipelineId}/${Date.now()}_${safeName}`;
 
-        // 1) Upload file
         const { error: uploadError } = await supabase.storage
           .from(bucket)
           .upload(path, file);
@@ -322,7 +331,6 @@ function ChatBox({ pipelineId, currentUserId }) {
           continue;
         }
 
-        // 2) Get public URL
         const { data: publicData, error: publicUrlError } = supabase.storage
           .from(bucket)
           .getPublicUrl(path);
@@ -335,7 +343,6 @@ function ChatBox({ pipelineId, currentUserId }) {
 
         const publicUrl = publicData.publicUrl;
 
-        // 3) Insert file message row
         const { error: insertError } = await supabase
           .from('pipeline_messages')
           .insert({
@@ -343,7 +350,7 @@ function ChatBox({ pipelineId, currentUserId }) {
             sender_id: currentUserId,
             content: '',
             file_url: publicUrl,
-            file_name: file.name, // original name for display
+            file_name: file.name,
             file_type: file.type,
           });
 
@@ -448,7 +455,6 @@ function ChatBox({ pipelineId, currentUserId }) {
                       : 'bg-slate-800 text-slate-50'
                   }`}
                 >
-                  {/* File link if any */}
                   {m.file_url && (
                     <a
                       href={m.file_url}
@@ -461,10 +467,8 @@ function ChatBox({ pipelineId, currentUserId }) {
                     </a>
                   )}
 
-                  {/* Text content */}
                   {m.content && <div>{m.content}</div>}
 
-                  {/* Time + pin button */}
                   <div className="flex items-center justify-between mt-0.5">
                     <div className="text-[10px] opacity-80">
                       {new Date(m.created_at).toLocaleTimeString([], {
@@ -499,7 +503,6 @@ function ChatBox({ pipelineId, currentUserId }) {
 
       {/* Input row with file upload + send */}
       <form onSubmit={handleSend} className="flex items-center gap-2 mt-1">
-        {/* File upload */}
         <label className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-slate-700 bg-slate-900 hover:bg-slate-800 cursor-pointer text-slate-200">
           <Paperclip className="w-4 h-4" />
           <input

@@ -12,7 +12,7 @@ export default function Header() {
   const [credits, setCredits] = useState(null);
   const [creditsLoading, setCreditsLoading] = useState(false);
 
-  // hydrate auth on mount + subscribe to auth changes
+  // 1) Hydrate auth + subscribe to auth changes
   useEffect(() => {
     let authSub;
 
@@ -20,6 +20,7 @@ export default function Header() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       setUser(session?.user ?? null);
 
       authSub = supabase.auth
@@ -31,7 +32,14 @@ export default function Header() {
     return () => authSub?.unsubscribe();
   }, []);
 
-  // load credits from user_credits table
+  // Helpful: log which user is logged in
+  useEffect(() => {
+    if (user?.id) {
+      console.log('Header: logged-in user.id =', user.id);
+    }
+  }, [user?.id]);
+
+  // 2) Load credits from user_credits
   useEffect(() => {
     if (!user?.id) {
       setCredits(null);
@@ -51,7 +59,10 @@ export default function Header() {
 
       if (cancelled) return;
 
-      if (!error && data) {
+      if (error) {
+        console.error('user_credits error', error);
+        setCredits(0);
+      } else if (data) {
         setCredits(data.credits ?? 0);
       } else {
         setCredits(0);
@@ -67,39 +78,77 @@ export default function Header() {
     };
   }, [user?.id]);
 
-  // load unread notifications count
+  // 3) Load unread notifications count + subscribe to changes
   useEffect(() => {
-    if (!user?.id) return;
-    let channel;
+    if (!user?.id) {
+      setUnread(0);
+      return;
+    }
+
+    let channel = null;
 
     async function refreshCount() {
-      const { count } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
-        .select('*', { head: true, count: 'exact' })
+        .select('id, recipient_user_id, is_read')
         .eq('recipient_user_id', user.id)
         .eq('is_read', false);
 
-      setUnread(count || 0);
+      if (error) {
+        console.error('notifications count error', error);
+        setUnread(0);
+        return;
+      }
+
+      console.log('Header: unread notifications data =', data);
+      setUnread(data ? data.length : 0);
     }
 
+    // Initial load
     refreshCount();
 
+    // Realtime subscription
     channel = supabase
-      .channel('notif_badge')
+      .channel(`notif_badge_${user.id}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: '*', // INSERT / UPDATE / DELETE
           schema: 'public',
           table: 'notifications',
           filter: `recipient_user_id=eq.${user.id}`,
         },
-        refreshCount
+        () => {
+          refreshCount();
+        }
       )
       .subscribe();
 
-    return () => channel && supabase.removeChannel(channel);
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [user?.id]);
+
+  // 4) When bell is clicked: mark all unread as read + hide badge
+  const handleNotificationsClick = async () => {
+    if (!user?.id || unread === 0) return;
+
+    console.log('Marking notifications as read for user', user.id);
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('recipient_user_id', user.id)
+      .eq('is_read', false);
+
+    if (error) {
+      console.error('mark notifications as read error', error);
+      return;
+    }
+
+    // Local UI update (realtime will also keep it in sync)
+    setUnread(0);
+  };
 
   const onSignOut = async () => {
     await supabase.auth.signOut();
@@ -131,6 +180,7 @@ export default function Header() {
           href="/notifications"
           className="relative"
           aria-label="Notifications"
+          onClick={handleNotificationsClick}
         >
           <Bell className="h-5 w-5" />
           {user?.id && unread > 0 && (

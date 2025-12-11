@@ -15,6 +15,17 @@ import { Badge } from '@/components/ui/badge'
 import { Archive, Edit, MessageCircle, Send } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { ComposeUpdateDialog } from '@/components/founder/compose-update-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 
 function getStatusBadge(status) {
   switch (status) {
@@ -33,6 +44,16 @@ export default function FounderUpdatesPage() {
   const [updates, setUpdates] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // View dialog state
+  const [viewUpdate, setViewUpdate] = useState(null)
+
+  // Edit dialog state
+  const [editUpdate, setEditUpdate] = useState(null)
+  const [editSubject, setEditSubject] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  /* ───────── Load updates ───────── */
   useEffect(() => {
     let cancelled = false
 
@@ -40,7 +61,6 @@ export default function FounderUpdatesPage() {
       try {
         setLoading(true)
 
-        // 🔴 get current user (founder)
         const {
           data: { user },
           error: authError,
@@ -49,11 +69,11 @@ export default function FounderUpdatesPage() {
         console.log('auth.getUser result:', { user, authError })
         if (authError) throw authError
         if (!user) {
-          // if not logged in, send to sign-in
           window.location.href = '/auth/signin'
           return
         }
 
+        // Rely on RLS to only show the founder's own rows
         const { data, error } = await supabase
           .from('investor_updates')
           .select(
@@ -63,11 +83,9 @@ export default function FounderUpdatesPage() {
             body,
             status,
             created_at,
-            founder_id,
             investor_update_recipients ( id )
           `
           )
-          .eq('founder_id', user.id)  // 👈 match what we insert
           .order('created_at', { ascending: false })
 
         console.log('select investor_updates result:', { data, error })
@@ -79,9 +97,7 @@ export default function FounderUpdatesPage() {
             subject: row.subject,
             body: row.body,
             status: row.status || 'sent',
-            createdAt: row.created_at
-              ? new Date(row.created_at)
-              : new Date(),
+            createdAt: row.created_at ? new Date(row.created_at) : new Date(),
             recipientsCount: Array.isArray(row.investor_update_recipients)
               ? row.investor_update_recipients.length
               : 0,
@@ -101,6 +117,8 @@ export default function FounderUpdatesPage() {
       cancelled = true
     }
   }, [])
+
+  /* ───────── Archive ───────── */
 
   const handleArchive = async (update) => {
     try {
@@ -122,6 +140,84 @@ export default function FounderUpdatesPage() {
     }
   }
 
+  /* ───────── View details ───────── */
+
+  const handleViewDetails = (update) => {
+    setViewUpdate(update)
+  }
+
+  /* ───────── Edit draft ───────── */
+
+  const handleEdit = (update) => {
+    if (update.status !== 'draft') return
+    setEditUpdate(update)
+    setEditSubject(update.subject || '')
+    setEditBody(update.body || '')
+  }
+
+  const handleEditSave = async (e) => {
+    e.preventDefault()
+    if (!editUpdate) return
+
+    try {
+      setSavingEdit(true)
+
+      const { data, error } = await supabase
+        .from('investor_updates')
+        .update({
+          subject: editSubject.trim(),
+          body: editBody.trim(),
+        })
+        .eq('id', editUpdate.id)
+        .select(
+          `
+          id,
+          subject,
+          body,
+          status,
+          created_at,
+          investor_update_recipients ( id )
+        `
+        )
+        .single()
+
+      if (error) throw error
+
+      // Update local state with the fresh row from DB
+      setUpdates((prev) =>
+        prev.map((u) =>
+          u.id === data.id
+            ? {
+                id: data.id,
+                subject: data.subject,
+                body: data.body,
+                status: data.status || 'sent',
+                createdAt: data.created_at
+                  ? new Date(data.created_at)
+                  : new Date(),
+                recipientsCount: Array.isArray(
+                  data.investor_update_recipients
+                )
+                  ? data.investor_update_recipients.length
+                  : u.recipientsCount ?? 0,
+              }
+            : u
+        )
+      )
+
+      setEditUpdate(null)
+      setEditSubject('')
+      setEditBody('')
+    } catch (err) {
+      console.error('Error saving update edit:', err)
+      alert(err.message || 'Failed to save changes')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  /* ───────── Render ───────── */
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -135,6 +231,7 @@ export default function FounderUpdatesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Investor Updates</h1>
@@ -150,6 +247,7 @@ export default function FounderUpdatesPage() {
         />
       </div>
 
+      {/* List */}
       <div className="space-y-4">
         {updates.length === 0 ? (
           <Card>
@@ -193,7 +291,12 @@ export default function FounderUpdatesPage() {
                       variant="ghost"
                       size="icon"
                       disabled={update.status !== 'draft'}
-                      title="Edit (not wired yet)"
+                      title={
+                        update.status === 'draft'
+                          ? 'Edit update'
+                          : 'Only drafts can be edited'
+                      }
+                      onClick={() => handleEdit(update)}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -219,9 +322,7 @@ export default function FounderUpdatesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                          alert('Edit draft logic not implemented')
-                        }
+                        onClick={() => handleEdit(update)}
                       >
                         <Edit className="mr-2 h-3 w-3" />
                         Edit
@@ -232,9 +333,7 @@ export default function FounderUpdatesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                          alert('View details logic not implemented')
-                        }
+                        onClick={() => handleViewDetails(update)}
                       >
                         View Details
                       </Button>
@@ -257,6 +356,106 @@ export default function FounderUpdatesPage() {
           ))
         )}
       </div>
+
+      {/* View Details dialog */}
+      <Dialog
+        open={!!viewUpdate}
+        onOpenChange={(open) => {
+          if (!open) setViewUpdate(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {viewUpdate?.subject || 'Investor Update'}
+            </DialogTitle>
+            <DialogDescription>
+              {viewUpdate
+                ? `${formatDate(viewUpdate.createdAt)} • ${
+                    viewUpdate.recipientsCount || 0
+                  } recipient${
+                    viewUpdate.recipientsCount === 1 ? '' : 's'
+                  }`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 space-y-2">
+            <div className="text-xs">
+              <span className="font-semibold mr-1">Status:</span>
+              {viewUpdate && getStatusBadge(viewUpdate.status)}
+            </div>
+            <div className="border rounded-md p-3 bg-muted/40 max-h-72 overflow-y-auto text-sm whitespace-pre-wrap">
+              {viewUpdate?.body}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewUpdate(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog (for drafts) */}
+      <Dialog
+        open={!!editUpdate}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditUpdate(null)
+            setEditSubject('')
+            setEditBody('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Investor Update</DialogTitle>
+            <DialogDescription>
+              Only drafts can be edited. Changes will be saved
+              immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSave} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-subject">Subject</Label>
+              <Input
+                id="edit-subject"
+                className="mt-1"
+                value={editSubject}
+                onChange={(e) => setEditSubject(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-body">Body</Label>
+              <Textarea
+                id="edit-body"
+                className="mt-1"
+                rows={6}
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditUpdate(null)
+                  setEditSubject('')
+                  setEditBody('')
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingEdit}>
+                {savingEdit ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

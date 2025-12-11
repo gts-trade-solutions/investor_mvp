@@ -66,21 +66,32 @@ export default function FounderPipeline() {
               .in('id', investorIds);
 
             if (!profErr && profs) {
-              investorsById = Object.fromEntries(
-                profs.map((p) => [p.id, p.full_name || ''])
-              );
+              investorsById = {};
+              for (const p of profs) {
+                const safeName =
+                  (p.full_name && p.full_name.trim()) ||
+                  `(no profile) ${String(p.id).slice(0, 8)}…`;
+                investorsById[p.id] = safeName;
+              }
             } else if (profErr) {
               console.error('profiles lookup error:', profErr);
             }
           }
 
-          enriched = enriched.map((r) => ({
-            ...r,
-            investor: {
-              id: r.investor_id,
-              name: investorsById[r.investor_id] || 'Unknown investor',
-            },
-          }));
+          enriched = enriched.map((r) => {
+            const invId = r.investor_id;
+            const fallbackId = invId ? String(invId).slice(0, 8) : 'unknown';
+            const name =
+              investorsById[invId] || `(missing profile) ${fallbackId}…`;
+
+            return {
+              ...r,
+              investor: {
+                id: invId,
+                name: name || 'Unknown investor',
+              },
+            };
+          });
         }
 
         // 4) Which pipeline chats are already unlocked for this founder?
@@ -102,7 +113,9 @@ export default function FounderPipeline() {
         const grouped = { to_contact: [], discussion: [], closed: [] };
         for (const r of enriched) {
           const rowWithUnlock = { ...r, unlocked: unlockedSet.has(r.id) };
-          if (grouped[rowWithUnlock.stage]) grouped[rowWithUnlock.stage].push(rowWithUnlock);
+          if (grouped[rowWithUnlock.stage]) {
+            grouped[rowWithUnlock.stage].push(rowWithUnlock);
+          }
         }
 
         setRows(grouped);

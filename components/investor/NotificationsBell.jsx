@@ -18,10 +18,10 @@ import { Input } from '@/components/ui/input'
 
 /**
  * Props:
- * - triggerButton: the button you pass from the card
- * - defaultInvestorId: if present, we DON'T show investor dropdown, we use this id
- * - defaultInvestorName: (optional) to show a label "Sending to X"
- * - onSent: callback that will create the notification (in InvestorCard)
+ * - triggerButton: ReactNode – button that opens the dialog
+ * - defaultInvestorId: if present, we DON'T show investor input, we use this id
+ * - defaultInvestorName: label to show "Sending to X"
+ * - onSent: async callback({ investor_id, message, pdf_url })
  */
 export function SendPitchDialog({
   triggerButton,
@@ -35,7 +35,7 @@ export function SendPitchDialog({
   const [file, setFile] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // keep local state in sync if defaultInvestorId changes
+  // keep local investorId in sync if prop changes
   useEffect(() => {
     if (defaultInvestorId) {
       setInvestorId(defaultInvestorId)
@@ -55,20 +55,23 @@ export function SendPitchDialog({
     try {
       setSubmitting(true)
 
-      // 1) upload PDF if present
+      // 1) Upload PDF if present
       let pdfUrl = null
 
       if (file) {
-        const ext = file.name.split('.').pop() || 'pdf'
+        const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
         const path = `pitch-decks/${Date.now()}-${Math.random()
           .toString(36)
           .slice(2)}.${ext}`
 
         const { data, error } = await supabase.storage
-          .from('pitch_decks') // <-- your bucket name
+          .from('pitch_decks') // <-- make sure this bucket exists
           .upload(path, file)
 
-        if (error) throw error
+        if (error) {
+          console.error('Supabase storage upload error:', error)
+          throw new Error('Failed to upload pitch deck')
+        }
 
         const { data: publicData } = supabase.storage
           .from('pitch_decks')
@@ -77,16 +80,16 @@ export function SendPitchDialog({
         pdfUrl = publicData.publicUrl
       }
 
-      // 2) hand off to parent (InvestorCard.handleSendPitch)
+      // 2) Let parent (e.g. InvestorCard) handle DB + notification + credits
       if (onSent) {
         await onSent({
-          investor_id: finalInvestorId,
+          investor_id: finalInvestorId, // ⚠ must be auth.users.id
           message,
           pdf_url: pdfUrl,
         })
       }
 
-      // 3) reset & close
+      // 3) Reset & close
       setOpen(false)
       setMessage('')
       setFile(null)
@@ -111,7 +114,7 @@ export function SendPitchDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* If we have defaultInvestorId (from card), just show info text, no dropdown */}
+          {/* If we have defaultInvestorId (usually from card), show label only */}
           {defaultInvestorId ? (
             <div className="space-y-1">
               <Label>Sending to</Label>
@@ -120,14 +123,13 @@ export function SendPitchDialog({
               </p>
             </div>
           ) : (
-            // Fallback mode: simple text input for investor id (only if you ever use dialog without a card)
             <div className="space-y-2">
               <Label htmlFor="investor-id">Investor ID</Label>
               <Input
                 id="investor-id"
                 value={investorId}
                 onChange={(e) => setInvestorId(e.target.value)}
-                placeholder="Investor id / email"
+                placeholder="Investor auth user id"
                 required
               />
             </div>
@@ -159,6 +161,7 @@ export function SendPitchDialog({
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
+              disabled={submitting}
             >
               Cancel
             </Button>

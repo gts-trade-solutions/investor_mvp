@@ -123,13 +123,13 @@ export function RequestIntroDialog({ onCreated }) {
     }
   }, [open])
 
-  // Submit: insert into DB and notify parent
+  // Submit: insert into DB and notify investor
   async function handleSubmit(e) {
     e.preventDefault()
     setErrorMsg(null)
 
     if (!selectedInvestorId || !selectedConnectorId) {
-      setErrorMsg('Please choose both an investor and a connector.')
+      setErrorMsg('Please choose both an investor and a startup.')
       return
     }
 
@@ -137,7 +137,7 @@ export function RequestIntroDialog({ onCreated }) {
     const connector = connectors.find((c) => c.id === selectedConnectorId)
 
     if (!investor || !connector) {
-      setErrorMsg('Invalid investor or connector selection.')
+      setErrorMsg('Invalid investor or startup selection.')
       return
     }
 
@@ -155,12 +155,13 @@ export function RequestIntroDialog({ onCreated }) {
         return
       }
 
+      // 1) Insert intro row
       const { data: inserted, error: insertError } = await supabase
         .from('founder_introductions')
         .insert({
           founder_id: user.id,
-          investor_id: selectedInvestorId,
-          connector_id: selectedConnectorId,
+          investor_id: selectedInvestorId,     // auth.users.id of investor
+          connector_id: selectedConnectorId,   // auth.users.id of startup/connector
           investor_label: investor.label,
           connector_label: connector.label,
           message,
@@ -175,6 +176,36 @@ export function RequestIntroDialog({ onCreated }) {
         return
       }
 
+      // 2) Create notification for that investor user
+      try {
+        const notifTitle = 'New introduction request'
+        const notifBody =
+          message?.trim().slice(0, 180) ||
+          `You have a new introduction request from ${connector.label}.`
+
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert({
+            recipient_user_id: selectedInvestorId, // investor’s auth user id
+            type: 'intro_request',
+            title: notifTitle,
+            body: notifBody,
+            data: {
+              intro_id: inserted.id,
+              founder_id: user.id,
+              connector_id: selectedConnectorId,
+            },
+          })
+
+        if (notifError) {
+          // not fatal for UI, just log
+          console.error('Notification insert error', notifError)
+        }
+      } catch (err) {
+        console.error('Error creating notification:', err)
+      }
+
+      // 3) Pass row back to parent so list updates immediately
       if (onCreated && inserted) {
         onCreated(inserted)
       }
@@ -243,27 +274,27 @@ export function RequestIntroDialog({ onCreated }) {
               </Select>
             </div>
 
-            {/* Connector */}
+            {/* Startup / connector */}
             <div className="space-y-2">
-              <p className="text-sm font-medium">Connector</p>
+              <p className="text-sm font-medium">Startup</p>
               <Select
                 value={selectedConnectorId}
                 onValueChange={setSelectedConnectorId}
                 disabled={loadingOptions || submitting}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select who will make the introduction" />
+                  <SelectValue placeholder="Select which startup is requesting" />
                 </SelectTrigger>
                 <SelectContent>
                   {loadingOptions && (
                     <SelectItem value="__loading" disabled>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading connectors...
+                      Loading startups...
                     </SelectItem>
                   )}
                   {!loadingOptions && connectors.length === 0 && (
                     <SelectItem value="__none" disabled>
-                      No connectors found
+                      No startups found
                     </SelectItem>
                   )}
                   {connectors.map((c) => (
