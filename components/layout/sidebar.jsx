@@ -29,7 +29,7 @@ const founderNav = [
   { name: 'Dashboard', href: '/founder', icon: Home },
   { name: 'Investor Directory', href: '/founder/directory', icon: Search },
   { name: 'Smart Matching', href: '/founder/matching', icon: Zap },
-  { name: 'Fundraising CRM', href: '/founder/crm', icon: Target },
+  // { name: 'Fundraising CRM', href: '/founder/crm', icon: Target },
   { name: 'My Pipeline', href: '/founder/pipeline', icon: Target },
   { name: 'Pitch Decks', href: '/founder/decks', icon: FileText },
   { name: 'Data Room', href: '/founder/dataroom', icon: Briefcase },
@@ -43,8 +43,8 @@ const founderNav = [
 const investorNav = [
   { name: 'Dashboard', href: '/investor', icon: Home },
   { name: 'Startups', href: '/investor/startups', icon: Building2 },
-  { name: 'Fundraising CRM', href: '/investor/crm', icon: Target },
-  { name: 'My Pipeline', href: '/investor/pipeline', icon: Target },
+  { name: 'My Pipeline', href: '/investor/crm', icon: Target },
+  // { name: 'My Pipeline', href: '/investor/pipeline', icon: Target },
   { name: 'Programs', href: '/investor/programs', icon: Award },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

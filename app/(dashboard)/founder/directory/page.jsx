@@ -1,7 +1,6 @@
-// app/founder/directory/page.jsx
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import supabase from '@/lib/supabaseClient';
 import {
   Card,
@@ -27,6 +26,14 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 /* ---------------------- Dev fallback investors --------------------- */
 
 const MOCK_INVESTORS = [
@@ -39,26 +46,8 @@ const MOCK_INVESTORS = [
     sectors: JSON.stringify(['AI', 'FinTech', 'HealthTech']),
     stages: JSON.stringify(['seed', 'series_a']),
     notes: 'Focused on early-stage AI-driven tools for productivity.',
-  },
-  {
-    id: '2',
-    name: 'Priya Nair',
-    title: 'Angel Investor',
-    org: { name: 'Independent' },
-    fund: { checkSizeMin: 50000, checkSizeMax: 250000 },
-    sectors: JSON.stringify(['EdTech', 'SaaS', 'CleanTech']),
-    stages: JSON.stringify(['pre_seed', 'seed']),
-    notes: 'Backs strong women founders and impact-focused startups.',
-  },
-  {
-    id: '3',
-    name: 'Michael Zhang',
-    title: 'Partner',
-    org: { name: 'BluePeak Capital' },
-    fund: { checkSizeMin: 1000000, checkSizeMax: 5000000 },
-    sectors: JSON.stringify(['ClimateTech', 'Mobility', 'Energy']),
-    stages: JSON.stringify(['series_a', 'series_b']),
-    notes: 'Sustainability and clean energy transition globally.',
+    user_id: 'demo-user-1',
+    owner: 'demo-user-1',
   },
 ];
 
@@ -73,8 +62,12 @@ export default function InvestorDirectory() {
     sectors: [],
     stages: [],
     geos: [],
-    checkSizeRange: [0, 10_000_000], // $0–$10M
+    checkSizeRange: [0, 10_000_000],
   });
+
+  // ✅ NEW: status filter
+  // ALL | UNLOCKED | LOCKED | CONTACTED | NOT_CONTACTED
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const USE_DEV_FALLBACK = false;
   const debouncedSearch = useDebounce(search, 300);
@@ -89,12 +82,8 @@ export default function InvestorDirectory() {
 
         const params = new URLSearchParams({
           ...(debouncedSearch && { search: debouncedSearch }),
-          ...(filters.sectors.length && {
-            sectors: filters.sectors.join(','),
-          }),
-          ...(filters.stages.length && {
-            stages: filters.stages.join(','),
-          }),
+          ...(filters.sectors.length && { sectors: filters.sectors.join(',') }),
+          ...(filters.stages.length && { stages: filters.stages.join(',') }),
           ...(filters.geos.length && { geos: filters.geos.join(',') }),
           checkSizeMin: String(filters.checkSizeRange[0]),
           checkSizeMax: String(filters.checkSizeRange[1]),
@@ -113,12 +102,16 @@ export default function InvestorDirectory() {
         const data = await res.json();
         const rows = data?.investors ?? [];
 
-        console.log('Loaded investors:', rows);
+        // ✅ Enrich rows with profile names
+        const enriched = await attachInvestorNamesFromProfiles(rows);
 
-        if (rows.length === 0 && USE_DEV_FALLBACK) {
+        // ✅ NEW: attach unlocked/contacted statuses in ONE batch
+        const withStatus = await attachInvestorStatuses(enriched);
+
+        if (withStatus.length === 0 && USE_DEV_FALLBACK) {
           setInvestors(MOCK_INVESTORS);
         } else {
-          setInvestors(rows);
+          setInvestors(withStatus);
         }
       } catch (e) {
         if (e.name === 'AbortError') return;
@@ -134,6 +127,41 @@ export default function InvestorDirectory() {
     return () => controller.abort();
   }, [debouncedSearch, filters]);
 
+  // ✅ NEW: filter list based on statusFilter
+  const filteredInvestors = useMemo(() => {
+    const list = Array.isArray(investors) ? investors : [];
+
+    if (statusFilter === 'UNLOCKED') return list.filter((x) => !!x.__unlocked);
+    if (statusFilter === 'LOCKED') return list.filter((x) => !x.__unlocked);
+    if (statusFilter === 'CONTACTED') return list.filter((x) => !!x.__contacted);
+    if (statusFilter === 'NOT_CONTACTED') return list.filter((x) => !x.__contacted);
+
+    return list;
+  }, [investors, statusFilter]);
+
+  // ✅ keep UI in sync when unlocking / pitching
+  function markUnlocked(investorId) {
+    setInvestors((prev) =>
+      prev.map((x) => (String(x.id) === String(investorId) ? { ...x, __unlocked: true } : x))
+    );
+  }
+
+  function markContacted(investorUserIdOrInv) {
+    const uid = typeof investorUserIdOrInv === 'string'
+      ? investorUserIdOrInv
+      : getInvestorUserId(investorUserIdOrInv);
+
+    setInvestors((prev) =>
+      prev.map((x) => {
+        const xUid = getInvestorUserId(x);
+        if (uid && xUid && String(uid) === String(xUid)) {
+          return { ...x, __contacted: true };
+        }
+        return x;
+      })
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -144,9 +172,9 @@ export default function InvestorDirectory() {
         </p>
       </div>
 
-      {/* Search + Filters */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4 flex-1">
+      {/* Search + Filters + Status */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-4 flex-1 flex-wrap">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
@@ -156,11 +184,26 @@ export default function InvestorDirectory() {
               className="pl-10"
             />
           </div>
-          <InvestorFiltersDialog
-            filters={filters}
-            onFiltersChange={setFilters}
-          />
+
+          <InvestorFiltersDialog filters={filters} onFiltersChange={setFilters} />
+
+          {/* ✅ NEW status filter */}
+          <div className="min-w-[220px]">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Status filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All</SelectItem>
+                <SelectItem value="UNLOCKED">Unlocked</SelectItem>
+                <SelectItem value="LOCKED">Locked</SelectItem>
+                <SelectItem value="CONTACTED">Contacted</SelectItem>
+                <SelectItem value="NOT_CONTACTED">Not contacted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+
         <SavedListsDropdown />
       </div>
 
@@ -172,8 +215,8 @@ export default function InvestorDirectory() {
         {!!error && <span className="text-sm text-red-500">{error}</span>}
         {!loading && !error && (
           <span className="text-sm text-muted-foreground">
-            Showing <strong>{investors.length}</strong> result
-            {investors.length === 1 ? '' : 's'}
+            Showing <strong>{filteredInvestors.length}</strong> result
+            {filteredInvestors.length === 1 ? '' : 's'}
           </span>
         )}
       </div>
@@ -181,7 +224,7 @@ export default function InvestorDirectory() {
       {/* Grid */}
       {loading ? (
         <SkeletonGrid />
-      ) : investors.length === 0 ? (
+      ) : filteredInvestors.length === 0 ? (
         <div className="col-span-full text-center py-12">
           <p className="text-muted-foreground">
             No investors found. Try broadening your filters.
@@ -189,8 +232,13 @@ export default function InvestorDirectory() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {investors.map((inv) => (
-            <InvestorCard key={inv.id || inv.owner} inv={inv} />
+          {filteredInvestors.map((inv) => (
+            <InvestorCard
+              key={String(inv.id ?? getInvestorUserId(inv) ?? Math.random())}
+              inv={inv}
+              onUnlocked={() => markUnlocked(inv.id)}
+              onContacted={() => markContacted(inv)}
+            />
           ))}
         </div>
       )}
@@ -200,11 +248,11 @@ export default function InvestorDirectory() {
 
 /* -------------------- SendPitchDialog -------------------- */
 
-function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName }) {
+function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName, onSent }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [file, setFile] = useState(null); // PDF file
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -229,11 +277,10 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
       }
 
       if (!investorUserId) {
-        alert('This investor row has no linked user id (owner).');
+        alert('This investor row has no linked user id.');
         return;
       }
 
-      // upload PDF to "pdf-bucket" (if attached)
       let pdfUrl = null;
 
       if (file) {
@@ -246,10 +293,7 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
           .from('pdf-bucket')
           .upload(path, file);
 
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          throw uploadError;
-        }
+        if (uploadError) throw uploadError;
 
         const { data: publicData } = supabase.storage
           .from('pdf-bucket')
@@ -258,9 +302,8 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
         pdfUrl = publicData.publicUrl;
       }
 
-      // create notification row for this investor
       const { error: notifError } = await supabase.from('notifications').insert({
-        recipient_user_id: investorUserId, // text or uuid stored as text
+        recipient_user_id: investorUserId,
         title: subject || 'New pitch received',
         body: message,
         type: 'INVESTOR_PITCH',
@@ -274,13 +317,12 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
       });
 
       if (notifError) {
-        console.error('Notification insert error:', notifError);
-        // This is where you were seeing "new row violates row-level security policy"
         alert(`Notification error: ${notifError.message}`);
         return;
       }
 
       alert('Pitch sent to investor!');
+      onSent?.(); // ✅ NEW: mark contacted in parent
       setOpen(false);
       setSubject('');
       setMessage('');
@@ -323,7 +365,6 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
             onChange={(e) => setMessage(e.target.value)}
           />
 
-          {/* PDF upload */}
           <div className="space-y-1">
             <p className="text-sm font-medium">Pitch deck (PDF, optional)</p>
 
@@ -369,54 +410,24 @@ function SendPitchDialog({ triggerButton, investorUserId, investorDisplayName })
 
 /* ------------------------- Investor Card (with credits unlock) ------------------------ */
 
-function InvestorCard({ inv }) {
-  const [unlocked, setUnlocked] = useState(false);
+function InvestorCard({ inv, onUnlocked, onContacted }) {
+  // ✅ Use parent-provided status (no per-card DB query)
+  const [unlocked, setUnlocked] = useState(!!inv.__unlocked);
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
-  const [pending, startTransition] = useTransition();
 
   const sectors = safeParseArray(inv.sectors);
   const stages = safeParseArray(inv.stages);
+
   const orgName = inv?.org?.name || inv.org_name || 'Independent';
   const fund =
     inv.fund || {
-      checkSizeMin: inv.fund_check_min ?? null,
-      checkSizeMax: inv.fund_check_max ?? null,
+      checkSizeMin: inv.fund_check_min ?? inv.check_min_usd ?? null,
+      checkSizeMax: inv.fund_check_max ?? inv.check_max_usd ?? null,
     };
 
-  // auth.users.id of investor that owns this profile
-  const investorUserId = inv.owner;
+  const investorUserId = getInvestorUserId(inv);
   const canSendPitch = !!investorUserId;
-
-  // When card mounts, check if already unlocked in Supabase
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkUnlocked() {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) return;
-
-      const { data, error } = await supabase
-        .from('unlocked_investors')
-        .select('id')
-        .eq('founder_id', user.id)
-        .eq('investor_id', inv.id.toString()); // keep consistent with unlock_investor
-
-      if (!cancelled && !error && data && data.length > 0) {
-        setUnlocked(true);
-      }
-    }
-
-    checkUnlocked();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inv.id]);
 
   async function handleUnlock() {
     try {
@@ -434,24 +445,18 @@ function InvestorCard({ inv }) {
       }
 
       const { data, error } = await supabase.rpc('unlock_investor', {
-        p_investor_id: inv.id.toString(), // text, matches unlocked_investors.investor_id
+        p_investor_id: String(inv.id),
       });
 
-      if (error) {
-        console.error('unlock_investor error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       if (data?.status === 'insufficient_credits') {
-        setUnlockError(
-          'Not enough credits. Go to Billing & Credits to top up.'
-        );
+        setUnlockError('Not enough credits. Go to Billing & Credits to top up.');
         return;
       }
 
       setUnlocked(true);
-      // optionally refresh header credits
-      // window.location.reload();
+      onUnlocked?.(); // ✅ update parent list for filtering
     } catch (e) {
       console.error(e);
       setUnlockError(e.message || 'Failed to unlock investor.');
@@ -485,7 +490,8 @@ function InvestorCard({ inv }) {
       <SendPitchDialog
         triggerButton={<Button size="sm">Send pitch</Button>}
         investorUserId={investorUserId}
-        investorDisplayName={`${inv.name} - ${orgName}`}
+        investorDisplayName={`${inv.name || 'Investor'} - ${orgName}`}
+        onSent={onContacted} // ✅ mark contacted after send
       />
     );
   }
@@ -495,13 +501,22 @@ function InvestorCard({ inv }) {
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">{inv.name}</CardTitle>
-            <CardDescription>{inv.title}</CardDescription>
-            {unlocked && (
-              <span className="mt-1 inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                Unlocked
-              </span>
-            )}
+            <CardTitle className="text-lg">{inv.name || 'Investor'}</CardTitle>
+            <CardDescription>{inv.title || inv.investor_type || ''}</CardDescription>
+
+            <div className="mt-2 flex items-center gap-2">
+              {(unlocked || inv.__unlocked) && (
+                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                  Unlocked
+                </span>
+              )}
+
+              {inv.__contacted && (
+                <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400">
+                  Contacted
+                </span>
+              )}
+            </div>
           </div>
 
           {primaryAction}
@@ -514,17 +529,13 @@ function InvestorCard({ inv }) {
           <span>{orgName}</span>
         </div>
 
-        {fund && (fund.checkSizeMin != null || fund.checkSizeMax != null) && (
+        {(fund?.checkSizeMin != null || fund?.checkSizeMax != null) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <DollarSign className="h-4 w-4" />
             <span>
-              {fund.checkSizeMin != null
-                ? formatCurrency(fund.checkSizeMin)
-                : '—'}
+              {fund.checkSizeMin != null ? formatCurrency(fund.checkSizeMin) : '—'}
               {' – '}
-              {fund.checkSizeMax != null
-                ? formatCurrency(fund.checkSizeMax)
-                : '—'}
+              {fund.checkSizeMax != null ? formatCurrency(fund.checkSizeMax) : '—'}
             </span>
           </div>
         )}
@@ -563,9 +574,7 @@ function InvestorCard({ inv }) {
           </p>
         )}
 
-        {unlockError && (
-          <p className="text-xs text-red-400 mt-1">{unlockError}</p>
-        )}
+        {unlockError && <p className="text-xs text-red-400 mt-1">{unlockError}</p>}
       </CardContent>
     </Card>
   );
@@ -606,7 +615,7 @@ function SkeletonGrid() {
   );
 }
 
-/* --------------------------- utils --------------------------- */
+/* --------------------------- helpers --------------------------- */
 
 function useDebounce(value, delay = 300) {
   const [v, setV] = useState(value);
@@ -629,4 +638,147 @@ function safeParseArray(v) {
   } catch {
     return [];
   }
+}
+
+/** investor user id stored as TEXT in your investors table */
+function getInvestorUserId(inv) {
+  return (
+    inv?.user_id ??
+    inv?.owner ??
+    inv?.userId ??
+    inv?.investor_user_id ??
+    null
+  );
+}
+
+/** ✅ attach inv.name from profiles.full_name (profiles.id is TEXT in your DB) */
+async function attachInvestorNamesFromProfiles(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return list;
+
+  const userIds = Array.from(
+    new Set(
+      list
+        .map((inv) => getInvestorUserId(inv))
+        .filter(Boolean)
+        .map(String)
+    )
+  );
+
+  if (userIds.length === 0) {
+    return list.map((inv) => ({
+      ...inv,
+      name:
+        inv?.name ||
+        `Investor ${(String(inv?.id ?? 'unknown')).slice(0, 8)}…`,
+    }));
+  }
+
+  const { data: profs, error } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', userIds);
+
+  if (error) {
+    console.error('profiles lookup error:', error);
+    return list.map((inv) => ({
+      ...inv,
+      name:
+        inv?.name ||
+        `Investor ${(String(getInvestorUserId(inv) ?? inv?.id ?? 'unknown')).slice(0, 8)}…`,
+    }));
+  }
+
+  const nameById = {};
+  for (const p of profs || []) {
+    nameById[String(p.id)] = (p.full_name || '').trim();
+  }
+
+  return list.map((inv) => {
+    const uid = String(getInvestorUserId(inv) ?? '');
+    const profileName = uid ? nameById[uid] : '';
+    const fallback = `Investor ${(uid || String(inv?.id ?? 'unknown')).slice(0, 8)}…`;
+
+    return {
+      ...inv,
+      name: profileName || inv?.name || fallback,
+    };
+  });
+}
+
+/**
+ * ✅ NEW: attach unlocked + contacted statuses in one go
+ * - unlocked: unlocked_investors (founder_id, investor_id TEXT = inv.id)
+ * - contacted: if fundraising_opportunities exists OR pitch notification exists
+ */
+async function attachInvestorStatuses(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return list;
+
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) {
+    return list.map((inv) => ({ ...inv, __unlocked: false, __contacted: false }));
+  }
+
+  const invIds = Array.from(new Set(list.map((x) => x?.id).filter((x) => x != null).map(String)));
+  const invUserIds = Array.from(
+    new Set(list.map((x) => getInvestorUserId(x)).filter(Boolean).map(String))
+  );
+
+  // 1) unlocked set
+  const unlockedSet = new Set();
+  if (invIds.length) {
+    const { data, error } = await supabase
+      .from('unlocked_investors')
+      .select('investor_id')
+      .eq('founder_id', user.id)
+      .in('investor_id', invIds);
+
+    if (!error && data?.length) {
+      for (const r of data) unlockedSet.add(String(r.investor_id));
+    }
+  }
+
+  // 2) contacted set (by investor user id)
+  const contactedUserSet = new Set();
+
+  // (A) fundraising_opportunities (founder_id + investor_id)
+  if (invUserIds.length) {
+    const { data: opps, error: oppErr } = await supabase
+      .from('fundraising_opportunities')
+      .select('investor_id')
+      .eq('founder_id', user.id)
+      .in('investor_id', invUserIds);
+
+    if (!oppErr && opps?.length) {
+      for (const o of opps) contactedUserSet.add(String(o.investor_id));
+    }
+  }
+
+  // (B) notifications pitches (recipient_user_id + type + data.from_user_id)
+  if (invUserIds.length) {
+    const { data: notes, error: noteErr } = await supabase
+      .from('notifications')
+      .select('recipient_user_id, type, data')
+      .eq('type', 'INVESTOR_PITCH')
+      .in('recipient_user_id', invUserIds)
+      .limit(500);
+
+    if (!noteErr && notes?.length) {
+      for (const n of notes) {
+        const fromId = n?.data?.from_user_id;
+        if (String(fromId) === String(user.id)) {
+          contactedUserSet.add(String(n.recipient_user_id));
+        }
+      }
+    }
+  }
+
+  return list.map((inv) => {
+    const unlocked = unlockedSet.has(String(inv.id));
+    const uid = getInvestorUserId(inv);
+    const contacted = uid ? contactedUserSet.has(String(uid)) : false;
+    return { ...inv, __unlocked: unlocked, __contacted: contacted };
+  });
 }
